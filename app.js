@@ -6,7 +6,7 @@ const cheerio = require('cheerio');
 
 const app = express();
 
-require('custom-env').env()
+require('custom-env').env();
 
 app.use(logger('dev'));
 app.use(express.json());
@@ -18,9 +18,10 @@ class Parser {
     this.baseSiteUrl = process.env.baseSiteUrl;
     this.siteUrl = process.env.siteUrl;
     this.botUrl = process.env.botUrl;
+    this.serverUrl = process.env.serverUrl;
     this.chat_id = process.env.chat_id;
     this.parseInterval = 10000;
-    this.postUrls = []
+    this.postUrls = [];
     this.oldUrls = []
   }
 
@@ -30,7 +31,7 @@ class Parser {
       text
     })
       .then(res => {
-        console.log(res)
+        console.log('Bot is ' + res.statusText)
       })
       .then(err => {
         console.log(err)
@@ -38,12 +39,14 @@ class Parser {
   }
 
   parsePosts(html) {
-    this.postUrls = cheerio
-      .load(html)
-      ('#js-ads-container .ads-list-photo-item-title a')
-      .toArray()
-      .map(item => this.baseSiteUrl + item.attribs.href)
-      .filter(item => !item.includes('/booster'))
+    this.postUrls.push(
+      ...cheerio
+        .load(html)
+        ('#js-ads-container .ads-list-photo-item-title a')
+        .toArray()
+        .map(item => this.baseSiteUrl + item.attribs.href)
+        .filter(item => !item.includes('/booster'))
+    )
   }
 
   getDiff() {
@@ -59,16 +62,28 @@ class Parser {
     }
   }
 
+  async getPosts(page) {
+    return (
+      await axios.get(this.siteUrl, {
+        params: {page}
+      })
+    ).data
+  }
+
+  updateServerStatus() {
+    axios.get(this.serverUrl)
+      .catch(() => {
+        console.log('Server is ok')
+      })
+  }
+
   parseSite() {
-    setInterval(() => {
-      axios.get(this.siteUrl)
-        .then(res => {
-          this.parsePosts(res.data);
-          this.filterPosts()
-        })
-        .then(err => {
-          console.log(err)
-        })
+    setInterval(async () => {
+      this.parsePosts(await this.getPosts(1));
+      this.parsePosts(await this.getPosts(2));
+      this.parsePosts(await this.getPosts(3));
+      this.filterPosts();
+      this.updateServerStatus();
     }, this.parseInterval)
   }
 }
